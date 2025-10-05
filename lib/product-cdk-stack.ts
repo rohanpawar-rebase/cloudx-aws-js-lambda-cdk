@@ -1,66 +1,60 @@
-import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
-import * as cdk from 'aws-cdk-lib';
-import * as path from 'path';
-import { Construct } from 'constructs';
+import * as cdk from "aws-cdk-lib";
+import * as path from "path";
+import { Construct } from "constructs";
 
 export class ProductCdkStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props?: cdk.StackProps) {
         super(scope, id, props);
 
-        // Create Lambda function
-        const lambdaFunction = new lambda.Function(this, 'products-lambda-function', {
+        // 🔹 Lambda: getProductsList (/products)
+        const getProductsListLambda = new lambda.Function(this, "getProductsListLambda", {
             runtime: lambda.Runtime.NODEJS_20_X,
             memorySize: 1024,
             timeout: cdk.Duration.seconds(5),
-            handler: 'handler.main',
-            code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/')),
+            handler: "getProductsList.main",
+            code: lambda.Code.fromAsset(path.join(__dirname, "../lambda")),
         });
 
-        // Create API Gateway
+        // 🔹 Lambda: getProductsById (/products/{id})
+        const getProductsByIdLambda = new lambda.Function(this, "getProductsByIdLambda", {
+            runtime: lambda.Runtime.NODEJS_20_X,
+            memorySize: 1024,
+            timeout: cdk.Duration.seconds(5),
+            handler: "getProductsById.main",
+            code: lambda.Code.fromAsset(path.join(__dirname, "../lambda")),
+        });
+
+        // 🔹 API Gateway
         const api = new apigateway.RestApi(this, "products-api", {
             restApiName: "Products Service",
-            description: "This API serves the Lambda functions.",
+            description: "API Gateway for Products Lambda Functions",
             defaultCorsPreflightOptions: {
                 allowOrigins: apigateway.Cors.ALL_ORIGINS,
                 allowMethods: apigateway.Cors.ALL_METHODS,
             },
         });
 
-        // Create a resource: /products
-        const apiResources = api.root.addResource('products');
+        // 🔹 /products resource
+        const productsResource = api.root.addResource("products");
 
-        // Attach LambdaIntegration to GET method
-        const productApiLambdaFunction = new apigateway.LambdaIntegration(lambdaFunction, {
-            proxy: false, // 👈 required if you want to control integrationResponses
-            integrationResponses: [
-                {
-                    statusCode: "200",
-                    responseParameters: {
-                        "method.response.header.Access-Control-Allow-Origin": "'*'",
-                        "method.response.header.Access-Control-Allow-Headers":
-                            "'Content-Type,X-Amz-Date,Authorization,X-Api-Key'",
-                        "method.response.header.Access-Control-Allow-Methods":
-                            "'GET,OPTIONS'",
-                    },
-                    responseTemplates: {
-                        "application/json": "", // pass through body as-is
-                    },
-                },
-            ],
-        });
+        // Attach GET /products
+        productsResource.addMethod("GET", new apigateway.LambdaIntegration(getProductsListLambda, {
+            proxy: true,
+        }));
 
-        apiResources.addMethod('GET', productApiLambdaFunction, {
-            methodResponses: [
-                {
-                    statusCode: "200",
-                    responseParameters: {
-                        "method.response.header.Access-Control-Allow-Origin": true,
-                        "method.response.header.Access-Control-Allow-Headers": true,
-                        "method.response.header.Access-Control-Allow-Methods": true,
-                    },
-                },
-            ]
+        // 🔹 /products/{id} resource
+        const productByIdResource = productsResource.addResource("{id}");
+
+        // Attach GET /products/{id}
+        productByIdResource.addMethod("GET", new apigateway.LambdaIntegration(getProductsByIdLambda, {
+            proxy: true,
+        }));
+
+        // ✅ Output API Endpoint URL
+        new cdk.CfnOutput(this, "ApiUrl", {
+            value: api.url ?? "No API URL available",
         });
     }
 }
